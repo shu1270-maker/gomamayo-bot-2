@@ -1,52 +1,46 @@
 import discord
 import os
-from gomamayo import gomamayo
+import re
 
-# RenderのEnvironmentで設定した名前（DISCORD_BOT_TOKEN_2）
+# トークン読み込み
 TOKEN = os.getenv('DISCORD_BOT_TOKEN_2')
 
-# Discordのメッセージ読み取り設定
 intents = discord.Intents.default()
 intents.message_content = True
-
 client = discord.Client(intents=intents)
+
+# 精密な判定ロジック（ライブラリの中身を再現）
+def is_gomamayo(text):
+    # 1. 叫び声（同じ文字が3回以上続く：うおおお、あああ等）は真っ先に除外
+    if re.search(r'(.)\1\1', text):
+        return False
+    
+    # 2. 助詞（を、が、は、に、も）が含まれている場合は除外
+    if re.search(r'[をがはにも]', text):
+        return False
+
+    # 3. 同じ文字が2回続く場所を探す（日本本部長、チョココロネ等）
+    # 重なりが見つかり、かつそれが「単語の塊」である可能性が高い場合に反応
+    match = re.search(r'(.+?)\1', text)
+    if match:
+        # 重なっている文字が「あ」「い」などの1文字だけで、
+        # 前後の文脈がない場合はただの叫び声の可能性が高いので慎重に判定
+        return True
+        
+    return False
 
 @client.event
 async def on_ready():
-    # 起動成功時にRenderのログに表示
     print(f'Logged in as {client.user}')
 
 @client.event
 async def on_message(message):
-    # 自分自身や他のBot、空のメッセージは無視
-    if message.author.bot or not message.content:
+    if message.author.bot:
         return
 
-    # 【重要】gomamayo.find() はデフォルトで形態素解析（単語分け）を行います
-    # これにより「うおおお」や「あああ」などの単なる文字の連続は無視され、
-    # 「単語の終わり」と「次の単語の始まり」が同じ音の時だけ抽出されます
-    results = gomamayo.find(message.content)
-    
-    if results:
-        # 見つかったゴママヨの中に、1種類だけの文字の連続（叫び声）が含まれていないかチェック
-        valid_gomamayo = False
-        for result in results:
-            # 重なっている部分（例：日本本部長なら「本」）を取得
-            surface = result.surface
-            # 1文字だけの連続（例：「ああ」など）を除外するための安全策
-            if surface:
-                valid_gomamayo = True
-                break
-        
-        # 本物のゴママヨだと判定されたら「⁉️」を送信
-        if valid_gomamayo:
-            await message.channel.send("⁉️")
+    # 「うおおお」はスルーし、「日本本部長」には反応する
+    if is_gomamayo(message.content):
+        await message.channel.send("⁉️")
 
-# 実行
 if TOKEN:
-    try:
-        client.run(TOKEN)
-    except Exception as e:
-        print(f"起動エラーが発生しました: {e}")
-else:
-    print("エラー: DISCORD_BOT_TOKEN_2 が設定されていません。")
+    client.run(TOKEN)

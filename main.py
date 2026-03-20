@@ -1,45 +1,52 @@
 import discord
-from discord.ext import commands
-import pykakasi
 import os
-from flask import Flask
-from threading import Thread
+from gomamayo import gomamayo
 
-# --- UptimeRobot用の設定 ---
-app = Flask('')
-@app.route('/')
-def home(): return "Bot-2 is Alive!"
-
-def run(): app.run(host='0.0.0.0', port=8080)
-def keep_alive():
-    t = Thread(target=run)
-    t.start()
-
-# --- ゴママヨ判定ロジック ---
-kks = pykakasi.kakasi()
-def count_pure_gomamayo(text):
-    result = kks.convert(text)
-    valid_words = [item['hira'] for item in result if item['pos'] not in ['助詞', '助動詞', '記号', '接頭辞', '空白']]
-    count = 0
-    for i in range(len(valid_words) - 1):
-        if valid_words[i] and valid_words[i+1]:
-            if valid_words[i][-1] == valid_words[i+1][0]:
-                count += 1
-    return count
-
-# --- Botの設定 ---
+# RenderのEnvironmentで設定した名前（DISCORD_BOT_TOKEN_2）
 TOKEN = os.getenv('DISCORD_BOT_TOKEN_2')
+
+# Discordのメッセージ読み取り設定
 intents = discord.Intents.default()
 intents.message_content = True
-bot = commands.Bot(command_prefix='?', intents=intents)
 
-@bot.event
+client = discord.Client(intents=intents)
+
+@client.event
+async def on_ready():
+    # 起動成功時にRenderのログに表示
+    print(f'Logged in as {client.user}')
+
+@client.event
 async def on_message(message):
-    if message.author == bot.user: return
-    count = count_pure_gomamayo(message.content)
-    if count > 0:
-        await message.channel.send('⁉️' * count)
+    # 自分自身や他のBot、空のメッセージは無視
+    if message.author.bot or not message.content:
+        return
 
-if __name__ == "__main__":
-    keep_alive()
-    bot.run(TOKEN)
+    # 【重要】gomamayo.find() はデフォルトで形態素解析（単語分け）を行います
+    # これにより「うおおお」や「あああ」などの単なる文字の連続は無視され、
+    # 「単語の終わり」と「次の単語の始まり」が同じ音の時だけ抽出されます
+    results = gomamayo.find(message.content)
+    
+    if results:
+        # 見つかったゴママヨの中に、1種類だけの文字の連続（叫び声）が含まれていないかチェック
+        valid_gomamayo = False
+        for result in results:
+            # 重なっている部分（例：日本本部長なら「本」）を取得
+            surface = result.surface
+            # 1文字だけの連続（例：「ああ」など）を除外するための安全策
+            if surface:
+                valid_gomamayo = True
+                break
+        
+        # 本物のゴママヨだと判定されたら「⁉️」を送信
+        if valid_gomamayo:
+            await message.channel.send("⁉️")
+
+# 実行
+if TOKEN:
+    try:
+        client.run(TOKEN)
+    except Exception as e:
+        print(f"起動エラーが発生しました: {e}")
+else:
+    print("エラー: DISCORD_BOT_TOKEN_2 が設定されていません。")

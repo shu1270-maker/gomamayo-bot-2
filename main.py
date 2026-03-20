@@ -13,6 +13,7 @@ def is_gomamayo(text):
         return False
     if re.search(r'[をがはにも]', text):
         return False
+    # 精密判定：ひらがな・カタカナの重なりだけ
     match = re.search(r'([\u3040-\u309F\u30A0-\u30FF])\1', text)
     return True if match else False
 
